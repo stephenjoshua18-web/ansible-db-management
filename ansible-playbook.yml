@@ -1,0 +1,72 @@
+---
+- name: Manage PostgreSQL database
+  hosts: postgres
+  become: true
+  vars:
+    ansible_password: "{{ vault.postgresql_password }}"
+  remote_user: bastion
+  roles:
+    - role: create_users
+      # Delegation allows using different passwords per user (on localhost)
+      delegate_to: localhost
+
+    - role: create_tables
+
+  tasks:
+    - name: Ensure database exists
+      postgresql_db:
+        name: "{{ db_name }}"
+        state: present
+
+# Role to create users with password reset (delegated)
+---
+- name: Create PostgreSQL users with password reset
+  hosts: postgres  # Delegate tasks to localhost, but target "postgres" group
+  become: true
+  vars:
+    user_prefix: "{{ user_prefix }}"
+    user_suffixes: "{{ user_suffixes }}"
+  remote_user: bastion
+  tasks:
+    - name: Create user "{{ user_prefix }}_{{ item }}"
+      postgresql_user:
+        name: "{{ user_prefix }}_{{ item }}"
+        db: "{{ db_name }}"
+        state: present
+        password: NOSET  # Force password reset on first login
+        connection_limit: 1  # Limit concurrent connections per user
+        encrypted: no      # Optional: Disable password encryption (for reset)
+      loop: "{{ user_suffixes }}"
+    
+    - name: Grant read/write access to first user
+      postgresql_privs:
+        name: "{{ user_prefix }}_{{ user_suffixes.0 }}"
+        database: "{{ db_name }}"
+        type: table
+        privileges: INSERT, SELECT, UPDATE, DELETE
+
+    - name: Grant read-only access to remaining users
+      postgresql_privs:
+        name: "{{ user_prefix }}_{{ item }}"
+        database: "{{ db_name }}"
+        type: table
+        privileges: SELECT
+      loop: "{{ user_suffixes | slice(1) }}"
+
+
+# Role to create tables (unchanged)
+---
+- name: Create PostgreSQL tables
+  hosts: postgres  # Target "postgres" group for table creation
+  become: true
+  vars:
+    table_names: "{{ table_names }}"
+    db_name: "{{ db_name }}"
+  remote_user: bastion
+  tasks:
+    - name: Create table "{{ item }}"
+      postgresql_query:
+        name: "Create table {{ item }}"
+        db: "{{ db_name }}"
+        sql: "CREATE TABLE {{ item }} ( id SERIAL PRIMARY KEY, data VARCHAR(255) );"
+      loop: "{{ table_names }}"

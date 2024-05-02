@@ -1,0 +1,21 @@
+# Database name
+db_name: staging_database
+
+# Prefix for generated user names
+user_prefix: staging
+
+# List of user suffixes (replace with your desired names)
+user_suffixes:
+  - omoyeni
+  - pascal
+  - john
+  - richard
+  - praise
+
+# Table names (replace with your desired names)
+table_names:
+  - users
+  - funding
+  - payroll
+  - notification
+  - tarrif
